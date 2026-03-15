@@ -14,13 +14,6 @@ docker compose up --build
 ./run_local.sh
 ```
 
-### Option C: VS Code task runner
-1. Open project in VS Code.
-2. Press `Ctrl+Shift+P` → **Tasks: Run Task**.
-3. Choose **Install deps & Start Proctored App**.
-
-This runs `scripts/vscode_bootstrap.sh`, which creates `.venv`, installs dependencies, and starts Uvicorn in reload mode.
-
 Open:
 - Admin console: `http://localhost:8000/`
 - Candidate console: `http://localhost:8000/candidate?session_id=<session-id>`

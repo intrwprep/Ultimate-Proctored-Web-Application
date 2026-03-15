@@ -106,12 +106,6 @@ App URLs:
 - Candidate: `http://localhost:8000/candidate?session_id=<id>`
 - Proctor: `http://localhost:8000/proctor?session_id=<id>`
 
-### Option 3: VS Code one-click task
-```bash
-./scripts/vscode_bootstrap.sh
-```
-Or in VS Code: **Terminal → Run Task → Install deps & Start Proctored App**.
-
 ## Validation / Test
 ```bash
 python3 -m compileall backend/app
