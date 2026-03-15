@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install deps & Start Proctored App",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/vscode_bootstrap.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "owner": "custom",
+          "pattern": [
+            {
+              "regexp": "^(.*)$",
+              "message": 1
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".*Starting Offline Proctored Exam app.*",
+            "endsPattern": ".*Application startup complete.*"
+          }
+        }
+      ]
+    }
+  ]
+}
