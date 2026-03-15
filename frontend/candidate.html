@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Candidate Exam</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<header>
+  <h2>Candidate Exam Workspace</h2>
+  <div class="meta">
+    <span id="timer" class="badge warn">Timer loading...</span>
+    <span id="fs" class="badge">Fullscreen unknown</span>
+    <span id="saveState" class="badge">Autosave idle</span>
+  </div>
+</header>
+
+<div class="container grid grid-3">
+  <aside class="card">
+    <h3>Question Navigator</h3>
+    <div id="qnav" class="question-nav"></div>
+    <div class="small" style="margin-top:8px;">
+      <div><span class="badge">Gray</span> Not answered</div>
+      <div><span class="badge" style="background:#059669;color:#fff;">Green</span> Answered</div>
+    </div>
+    <button class="danger" style="margin-top:10px;" onclick="submitExam()">Submit Exam</button>
+    <div id="alerts"></div>
+    <h4 style="margin-top:14px;">Webcam Preview</h4>
+    <video id="webcam" autoplay muted></video>
+  </aside>
+
+  <main class="card">
+    <h3 id="qtitle">Loading question...</h3>
+    <div id="qmeta" class="small"></div>
+    <div id="qbody"></div>
+    <div class="row" style="margin-top:10px;">
+      <button class="secondary" onclick="prevQ()">Previous</button>
+      <button onclick="nextQ()">Next</button>
+    </div>
+  </main>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const sessionId = params.get('session_id');
+let exam, idx=0, answers={};
+
+function showAlert(msg, good=false){
+  const cls = good ? 'success' : 'alert';
+  document.getElementById('alerts').innerHTML += `<div class='${cls}'>${msg}</div>`;
+}
+function setSaveState(msg){ document.getElementById('saveState').textContent = msg; }
+
+async function logEvent(event_type, severity='medium', details={}) {
+  if(!sessionId) return;
+  try {
+    await fetch(`/proctor/sessions/${sessionId}/events`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({event_type,severity,details})
+    });
+  } catch {}
+}
+
+async function loadExam(){
+  if (!sessionId) { showAlert('Missing session_id in URL query'); return; }
+  const resp = await fetch(`/candidate/sessions/${sessionId}/exam`);
+  exam = await resp.json();
+  if (!resp.ok) { showAlert(exam.detail || 'Failed to load exam'); return; }
+  renderNav();
+  renderQuestion();
+  const end = new Date(exam.ends_at);
+  setInterval(()=>{
+    const s = Math.max(0, Math.floor((end - new Date())/1000));
+    document.getElementById('timer').textContent = `Time left: ${Math.floor(s/60)}m ${s%60}s`;
+    if (s===0) submitExam();
+  },1000);
+}
+
+function renderNav(){
+  const nav=document.getElementById('qnav');
+  nav.innerHTML=exam.questions.map((q,i)=>{
+    const answered = answers[q.id] !== undefined && answers[q.id] !== '' && !(Array.isArray(answers[q.id]) && !answers[q.id].length);
+    const active = i===idx;
+    return `<button class='${answered?'answered':''} ${active?'active':''}' onclick='goQ(${i})'>${i+1}</button>`;
+  }).join('');
+}
+
+function goQ(i){ idx=i; renderQuestion(); }
+function prevQ(){ if(idx>0){ idx--; renderQuestion(); }}
+function nextQ(){ if(idx<exam.questions.length-1){ idx++; renderQuestion(); }}
+
+function renderQuestion(){
+  const q=exam.questions[idx];
+  document.getElementById('qtitle').textContent = `${idx+1}. ${q.question}`;
+  document.getElementById('qmeta').textContent = `type=${q.type} | marks=${q.marks} | difficulty=${q.difficulty} | tags=${(q.tags||[]).join(', ')}`;
+
+  const current = answers[q.id];
+  let html='';
+  if (q.image) html += `<img src='${q.image}' alt='question image' style='max-width:100%;margin-bottom:8px;border-radius:8px;'>`;
+
+  if(q.type==='mcq_single') {
+    html += q.options.map(o=>`<label><input type='radio' name='ans' ${current===o?'checked':''} onchange='saveAnswer("${q.id}","${o}")'> ${o}</label><br>`).join('');
+  } else if(q.type==='mcq_multiple') {
+    const selected = new Set(current || []);
+    html += q.options.map(o=>`<label><input type='checkbox' ${selected.has(o)?'checked':''} onchange='toggleMulti("${q.id}","${o}",this.checked)'> ${o}</label><br>`).join('');
+  } else {
+    html += `<label>${q.type === 'essay' ? 'Essay response' : 'Short response'}</label>`;
+    html += `<textarea oninput='saveAnswer("${q.id}",this.value)' placeholder='Type your answer here...'>${current || ''}</textarea>`;
+    if (q.max_words) html += `<div class='small'>Max words: ${q.max_words}</div>`;
+  }
+
+  document.getElementById('qbody').innerHTML = html;
+  renderNav();
+}
+
+async function saveAnswer(qid, answer){
+  answers[qid]=answer;
+  setSaveState('Saving...');
+  const resp = await fetch(`/candidate/sessions/${sessionId}/answers`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({question_id:qid,answer})
+  });
+  setSaveState(resp.ok ? 'Saved' : 'Save failed');
+  renderNav();
+}
+
+function toggleMulti(qid,opt,checked){
+  const arr=new Set(answers[qid]||[]);
+  checked ? arr.add(opt) : arr.delete(opt);
+  saveAnswer(qid, Array.from(arr));
+}
+
+async function submitExam(){
+  const resp = await fetch(`/candidate/sessions/${sessionId}/submit`, {method:'POST'});
+  const data = await resp.json();
+  if (!resp.ok) { showAlert(data.detail || 'Submission failed'); return; }
+  showAlert(`Submitted successfully. Score: ${data.score}/${data.max_score}`, true);
+  setSaveState('Submitted');
+}
+
+window.addEventListener('blur',()=>logEvent('focus_loss','high'));
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){ logEvent('tab_switch','high'); }});
+document.addEventListener('copy',(e)=>{ e.preventDefault(); logEvent('copy_attempt','high'); });
+document.addEventListener('paste',(e)=>{ e.preventDefault(); logEvent('paste_attempt','high'); });
+document.addEventListener('fullscreenchange',()=>{
+  const ok=!!document.fullscreenElement;
+  document.getElementById('fs').textContent=ok?'Fullscreen On':'Fullscreen Off';
+  document.getElementById('fs').className = ok ? 'badge ok' : 'badge warn';
+  if(!ok) logEvent('fullscreen_exit','critical');
+});
+setInterval(()=>{ if(window.outerWidth-window.innerWidth>160){ logEvent('devtools_suspected','medium',{delta:window.outerWidth-window.innerWidth}); }},5000);
+
+async function startMedia(){
+  try {
+    const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    document.getElementById('webcam').srcObject=stream;
+
+    const ctx=new (window.AudioContext || window.webkitAudioContext)();
+    const source=ctx.createMediaStreamSource(stream);
+    const analyser=ctx.createAnalyser();
+    source.connect(analyser);
+    const data=new Uint8Array(analyser.fftSize);
+
+    setInterval(()=>{ analyser.getByteTimeDomainData(data); const peak=Math.max(...data); if(peak>210){ logEvent('mic_activity','low',{peak}); }},4000);
+    setInterval(()=>logEvent('webcam_snapshot','low',{note:'snapshot trigger'}),15000);
+    setInterval(()=>logEvent('multiple_faces','low',{detected:1, note:'placeholder local detector'}),20000);
+
+    const rec = new MediaRecorder(stream);
+    rec.start();
+    logEvent('screen_recording','low',{status:'local media recorder started'});
+  } catch(e) {
+    showAlert('Camera/mic permission denied. Proctoring quality reduced.');
+  }
+}
+
+if (document.documentElement.requestFullscreen) {
+  document.documentElement.requestFullscreen().catch(()=>{});
+}
+loadExam();
+startMedia();
+</script>
+</body>
+</html>
