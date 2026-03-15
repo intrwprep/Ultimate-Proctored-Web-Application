@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Admin Console</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<header>
+  <h2>Offline Proctored Exam — Admin Console</h2>
+  <div class="meta">Local mode • No internet/cloud dependency</div>
+</header>
+
+<div class="container grid grid-2">
+  <section class="card">
+    <h3>1) Import Exam JSON</h3>
+    <label for="examFile">Select exam file</label>
+    <input type="file" id="examFile" accept="application/json">
+    <div class="row">
+      <button onclick="importExam()">Import</button>
+      <span id="importStatus" class="small"></span>
+    </div>
+    <pre id="importResult" class="small"></pre>
+
+    <h3>2) Start Session</h3>
+    <label for="examSelect">Exam</label>
+    <select id="examSelect"></select>
+    <label for="candidateId">Candidate ID</label>
+    <input id="candidateId" placeholder="candidate-001">
+    <div class="row">
+      <button onclick="startSession()">Start Session</button>
+      <button class="secondary" onclick="loadExams()">Reload Exams</button>
+    </div>
+    <div id="sessionInfo" class="small"></div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;">
+      <h3>Sessions</h3>
+      <button class="secondary" onclick="refreshSessions()">Refresh</button>
+    </div>
+    <div id="sessions" class="list"></div>
+
+    <div class="row" style="justify-content:space-between; margin-top: 12px;">
+      <h3>Audit Logs</h3>
+      <button class="secondary" onclick="refreshAudit()">Refresh</button>
+    </div>
+    <div id="audit" class="list"></div>
+  </section>
+</div>
+
+<script>
+function esc(text){
+  return String(text ?? '').replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+async function importExam() {
+  const fileInput = document.getElementById('examFile');
+  const status = document.getElementById('importStatus');
+  if (!fileInput.files[0]) { status.textContent = 'Please choose a JSON file.'; return; }
+  status.textContent = 'Importing...';
+  const form = new FormData(); form.append('file', fileInput.files[0]);
+  const resp = await fetch('/admin/import', { method:'POST', body: form });
+  const data = await resp.json();
+  document.getElementById('importResult').textContent = JSON.stringify(data, null, 2);
+  status.textContent = resp.ok ? 'Import successful.' : `Import failed (${resp.status})`;
+  await loadExams();
+}
+
+async function loadExams() {
+  const exams = await (await fetch('/admin/exams')).json();
+  const sel = document.getElementById('examSelect');
+  sel.innerHTML = '';
+  exams.forEach(e => {
+    const o = document.createElement('option');
+    o.value = e.exam_id;
+    o.textContent = `${e.exam_id} — ${e.title} (${e.duration_minutes} min)`;
+    sel.appendChild(o);
+  });
+}
+
+function linkRow(label, url){
+  return `<div>${label}: <a href="${esc(url)}" target="_blank">${esc(url)}</a> <button class="secondary" onclick="navigator.clipboard.writeText('${esc(url)}')">Copy</button></div>`;
+}
+
+async function startSession() {
+  const examId = document.getElementById('examSelect').value;
+  const candidate = document.getElementById('candidateId').value.trim();
+  if (!candidate) { alert('Candidate ID is required'); return; }
+  const resp = await fetch(`/admin/exams/${examId}/start`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({candidate_id:candidate})
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    document.getElementById('sessionInfo').innerHTML = `<div class="alert">${esc(data.detail || 'Failed to start session')}</div>`;
+    return;
+  }
+  const candidateUrl = `${location.origin}/candidate?session_id=${data.session_id}`;
+  const proctorUrl = `${location.origin}/proctor?session_id=${data.session_id}`;
+  document.getElementById('sessionInfo').innerHTML = `
+    <div class="success">Session started: <b>${esc(data.session_id)}</b></div>
+    ${linkRow('Candidate URL', candidateUrl)}
+    ${linkRow('Proctor URL', proctorUrl)}
+  `;
+  await refreshSessions();
+}
+
+async function refreshSessions(){
+  const rows = await (await fetch('/admin/sessions')).json();
+  if (!rows.length) {
+    document.getElementById('sessions').innerHTML = '<div class="small">No sessions yet.</div>';
+    return;
+  }
+  document.getElementById('sessions').innerHTML = rows.map(r => `
+    <div class="card" style="margin-bottom:8px;">
+      <div><b>${esc(r.session_id)}</b></div>
+      <div class="small">candidate=${esc(r.candidate_id)} • exam=${esc(r.exam_id)} • status=<span class="badge">${esc(r.status)}</span> • score=${esc(r.score ?? '-')}</div>
+      <div class="small"><a href="/admin/sessions/${esc(r.session_id)}/results" target="_blank">view results</a> • <a href="/admin/sessions/${esc(r.session_id)}/export" target="_blank">export</a></div>
+    </div>
+  `).join('');
+}
+
+async function refreshAudit(){
+  const rows = await (await fetch('/admin/audit')).json();
+  if (!rows.length) {
+    document.getElementById('audit').innerHTML = '<div class="small">No audit entries yet.</div>';
+    return;
+  }
+  document.getElementById('audit').innerHTML = rows.map(r => `
+    <div style="padding:6px 0; border-bottom:1px solid #e5e7eb;">
+      <div class="small">${esc(r.created_at)}</div>
+      <div><b>${esc(r.actor)}</b> → ${esc(r.action)} (${esc(r.object_type)}:${esc(r.object_id)})</div>
+    </div>
+  `).join('');
+}
+
+loadExams();
+refreshSessions();
+refreshAudit();
+</script>
+</body>
+</html>

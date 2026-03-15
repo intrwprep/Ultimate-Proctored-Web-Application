@@ -1,0 +1,44 @@
+{
+  "exam_id": "exam001",
+  "title": "DevOps Fundamentals",
+  "duration_minutes": 60,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "mcq_single",
+      "question": "Which port does HTTPS use?",
+      "options": ["80", "443", "22", "25"],
+      "correct_answer": "443",
+      "marks": 1,
+      "difficulty": "easy",
+      "tags": ["networking"]
+    },
+    {
+      "id": "q2",
+      "type": "mcq_multiple",
+      "question": "Which are IaC tools?",
+      "options": ["Terraform", "Ansible", "Git", "Jira"],
+      "correct_answer": ["Terraform", "Ansible"],
+      "marks": 2,
+      "difficulty": "medium",
+      "tags": ["iac", "automation"]
+    },
+    {
+      "id": "q3",
+      "type": "short_answer",
+      "question": "Define blue-green deployment.",
+      "max_words": 70,
+      "marks": 3,
+      "difficulty": "medium"
+    },
+    {
+      "id": "q4",
+      "type": "essay",
+      "question": "Explain Infrastructure as Code and its security implications.",
+      "max_words": 300,
+      "marks": 5,
+      "difficulty": "hard",
+      "time_limit_seconds": 1200
+    }
+  ]
+}

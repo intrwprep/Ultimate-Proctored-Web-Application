@@ -1,0 +1,13 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - EXAM_SIGNING_SECRET=local-dev-secret
+    volumes:
+      - ./backend/app:/app/app
+      - ./schemas:/schemas
+      - ./backend/media:/app/media

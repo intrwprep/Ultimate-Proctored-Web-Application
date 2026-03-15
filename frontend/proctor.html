@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Proctor Console</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<header>
+  <h2>Proctor Monitoring Console</h2>
+  <div class="meta">Live local event stream</div>
+</header>
+
+<div class="container grid grid-2">
+  <section class="card">
+    <h3>Session Monitor</h3>
+    <label for="sessionId">Session ID</label>
+    <input id="sessionId" placeholder="Paste session id from admin screen">
+    <div class="row">
+      <button onclick="startWatching()">Watch</button>
+      <button class="secondary" onclick="stopWatching()">Stop</button>
+    </div>
+
+    <h4>Critical Alerts</h4>
+    <div id="critical"></div>
+
+    <h4>Local Camera Preview</h4>
+    <video id="proctorVideo" autoplay muted></video>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;">
+      <h3>Event Timeline</h3>
+      <span id="eventCount" class="badge">0 events</span>
+    </div>
+    <div id="events" class="list"></div>
+  </section>
+</div>
+
+<script>
+let timer;
+const params = new URLSearchParams(location.search);
+if (params.get('session_id')) document.getElementById('sessionId').value = params.get('session_id');
+
+function severityBadge(sev){
+  const cls = (sev === 'critical' || sev === 'high') ? 'warn' : 'ok';
+  return `<span class='badge ${cls}'>${sev}</span>`;
+}
+
+async function startCameraPreview(){
+  try {
+    const stream=await navigator.mediaDevices.getUserMedia({video:true});
+    document.getElementById('proctorVideo').srcObject=stream;
+  } catch {
+    document.getElementById('critical').innerHTML='<div class="alert">Camera not available for live preview.</div>';
+  }
+}
+
+async function poll(){
+  const id=document.getElementById('sessionId').value.trim();
+  if(!id) return;
+  const resp = await fetch(`/proctor/sessions/${id}/events`);
+  const rows = await resp.json();
+  if (!resp.ok) {
+    document.getElementById('events').innerHTML = `<div class='alert'>${rows.detail || 'Unable to load events'}</div>`;
+    return;
+  }
+
+  document.getElementById('eventCount').textContent = `${rows.length} events`;
+  document.getElementById('events').innerHTML = rows.slice().reverse().map(r=>`
+    <div style='padding:8px 0;border-bottom:1px solid #e5e7eb;'>
+      <div>${severityBadge(r.severity)} <b>${r.event_type}</b></div>
+      <div class='small'>${r.created_at}</div>
+      <div class='small'>${JSON.stringify(r.details || {})}</div>
+    </div>
+  `).join('') || '<div class="small">No events yet.</div>';
+
+  const critical = rows.filter(r => ['critical','high'].includes(r.severity));
+  document.getElementById('critical').innerHTML = critical.slice(-5).map(r=>`
+    <div class='alert'>${r.event_type} (${r.severity}) @ ${r.created_at}</div>
+  `).join('') || '<div class="small">No critical/high alerts.</div>';
+}
+
+function startWatching(){
+  if(timer) clearInterval(timer);
+  poll();
+  timer = setInterval(poll, 2000);
+}
+
+function stopWatching(){
+  if(timer) clearInterval(timer);
+  timer = null;
+}
+
+startCameraPreview();
+if (document.getElementById('sessionId').value.trim()) startWatching();
+</script>
+</body>
+</html>
